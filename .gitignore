@@ -1,0 +1,10 @@
+reports
+
+# Local environment variables containing secrets
+.env
+
+# Isolated Chrome profile data
+.agents/chrome-profile/
+flows/compra_zapatilla_3121769.md
+flows/navigation_search_pdp.md
+flows/tag_cuero_visualizacion.md
