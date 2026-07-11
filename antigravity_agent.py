@@ -368,7 +368,7 @@ Reglas críticas de interacción:
 7. Solo usa UIDs que existan en el snapshot más reciente que se te ha proporcionado.
 """
 
-        max_turns = 15
+        max_turns = 25
         for turn in range(1, max_turns + 1):
             print(f"--- Turno {turn}/{max_turns} ---", flush=True)
 
