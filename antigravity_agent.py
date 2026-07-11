@@ -427,13 +427,29 @@ Reglas críticas de interacción:
                 try:
                     tool_result = client.call_tool_text(tool_name, tool_args)
                     print(f"Resultado herramienta: {tool_result[:200]}...", flush=True)
-                    history.append({
+                    
+                    # Espera corta para que la página reaccione/renderice antes de la captura
+                    time.sleep(1.5)
+                    
+                    history_entry = {
                         "turn": turn,
                         "thought": thought,
                         "action": f"Llamada a {tool_name}",
                         "arguments": tool_args,
                         "result": tool_result[:500] # Limitar tamaño guardado
-                    })
+                    }
+                    
+                    # Captura de pantalla de este paso
+                    step_ss_name = f"step_{turn}_{tool_name}.png"
+                    step_ss_path = os.path.join(report_dir, step_ss_name)
+                    try:
+                        client.call_tool("take_screenshot", {"filePath": step_ss_path})
+                        history_entry["screenshot"] = step_ss_name
+                        print(f"Captura de pantalla del paso {turn} guardada en: {step_ss_name}", flush=True)
+                    except Exception as ss_err:
+                        print(f"Advertencia: No se pudo tomar captura del paso {turn}: {ss_err}", file=sys.stderr)
+                        
+                    history.append(history_entry)
                 except Exception as tool_err:
                     print(f"Error al ejecutar herramienta: {tool_err}", file=sys.stderr)
                     history.append({
@@ -443,9 +459,7 @@ Reglas críticas de interacción:
                         "arguments": tool_args,
                         "error": str(tool_err)
                     })
-                
-                # Espera corta para que la página reaccione
-                time.sleep(1.5)
+                    time.sleep(1.5)
 
             elif action == "success":
                 status = "success"
@@ -571,6 +585,11 @@ Reglas críticas de interacción:
                 result_disp = result
             
             md_content.append(f"**Resultado:**\n```\n{result_disp}\n```\n")
+            
+            # Si hay captura de pantalla para este paso, incluirla
+            if "screenshot" in turn_data:
+                md_content.append(f"📸 **Captura de pantalla del paso:**\n![Paso {turn_num}](./{turn_data['screenshot']})\n")
+                
             md_content.append("---")
             
         md_content.append("\n## Diagnósticos y Archivos Adjuntos")

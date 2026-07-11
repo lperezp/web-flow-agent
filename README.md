@@ -140,8 +140,9 @@ Si deseas ejecutar un flujo específico de forma directa (por ejemplo, para auto
 Para mantener el historial ordenado y evitar sobreescribir ejecuciones anteriores, cada corrida genera una carpeta única dentro de `./reports` con el formato `reports/report_[flujo]_[url_auditada]_[date]_[time]/`:
 
 Dentro de esa carpeta encontrarás:
-- `report.md`: Reporte legible y detallado en formato Markdown que resume toda la ejecución paso a paso (pensamientos, acciones y resultados por turno).
+- `report.md`: Reporte legible y detallado en formato Markdown que resume toda la ejecución paso a paso (pensamientos, acciones, resultados y capturas de pantalla de cada turno de forma integrada).
 - `report.json`: Reporte estructurado con el historial de pasos, pensamientos del agente y logs de consola/red.
+- `step_[turno]_[accion].png`: Capturas de pantalla individuales generadas automáticamente tras la ejecución de cada paso.
 - `screenshot.png`: Captura de pantalla de la interfaz web en el momento final (o al ocurrir el fallo).
 - `snapshot.txt`: Estructura jerárquica del DOM accesible en formato texto al finalizar la prueba.
 - `error.log` (Solo en caso de excepción): Traza detallada de la pila de errores de Python para diagnóstico en profundidad.
