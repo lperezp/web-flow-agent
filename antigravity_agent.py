@@ -2,11 +2,13 @@
 import os
 import sys
 import json
+import re
 import subprocess
 import urllib.request
 import argparse
 import traceback
 import time
+from datetime import datetime
 
 def parse_pages(pages_text):
     pages = []
@@ -22,12 +24,15 @@ def parse_pages(pages_text):
             try:
                 pid = int(parts[0].strip())
                 rest = parts[1].strip()
-                is_selected = "[selected]" in rest
-                url = rest.replace("[selected]", "").strip()
-                pages.append({"id": pid, "url": url, "selected": is_selected})
+                pages.append({
+                    "id": pid,
+                    "url": rest.replace("[selected]", "").strip(),
+                    "selected": "[selected]" in rest
+                })
             except ValueError:
                 pass
     return pages
+
 
 class McpClient:
     def __init__(self):
@@ -176,68 +181,64 @@ def parse_spec(spec_path):
     if not os.path.exists(spec_path):
         raise FileNotFoundError(f"Specification file not found: {spec_path}")
         
+    pattern = re.compile(
+        r'^-\s*(?:\*\*)?(Objective|Action)(?:\*\*)?(?:\s*:\s*|\s+)(.*)$',
+        re.IGNORECASE
+    )
     with open(spec_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            # Normalize prefixes for both Spanish and English
-            if line.startswith("- **Objetivo:**") or line.startswith("- **Objetivo**"):
-                objective = line.replace("- **Objetivo:**", "").replace("- **Objetivo**", "").strip()
-            elif line.startswith("- **Objective:**") or line.startswith("- **Objective**"):
-                objective = line.replace("- **Objective:**", "").replace("- **Objective**", "").strip()
-            elif line.startswith("- **Acción:**") or line.startswith("- **Acción**"):
-                action = line.replace("- **Acción:**", "").replace("- **Acción**", "").strip()
-                actions.append(action)
-            elif line.startswith("- **Action:**") or line.startswith("- **Action**"):
-                action = line.replace("- **Action:**", "").replace("- **Action**", "").strip()
-                actions.append(action)
-            elif line.startswith("- ") and any(k in line for k in ["Objetivo:", "Objetivo", "Objective:", "Objective"]):
-                parts = line.split(":", 1)
-                objective = parts[1].strip()
-            elif line.startswith("- ") and any(k in line for k in ["Acción:", "Acción", "Action:", "Action"]):
-                parts = line.split(":", 1)
-                actions.append(parts[1].strip())
+            match = pattern.match(line)
+            if match:
+                key, val = match.groups()
+                val = val.strip()
+                if key.lower() == "objective":
+                    objective = val
+                else:
+                    actions.append(val)
     return objective, actions
 
 def clean_json_text(text):
     text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r'^```(?:json)?\s*', '', text)
+        text = re.sub(r'\s*```$', '', text)
+        text = text.strip()
     
-    start_idx = text.find("{")
-    if start_idx == -1:
+    start = text.find("{")
+    if start == -1:
         return text
         
     brace_count = 0
-    in_string = False
-    escape = False
+    in_str = False
+    escaped = False
     
-    for i in range(start_idx, len(text)):
-        char = text[i]
-        
-        if escape:
-            escape = False
+    for idx in range(start, len(text)):
+        char = text[idx]
+        if escaped:
+            escaped = False
             continue
-            
         if char == '\\':
-            escape = True
+            escaped = True
             continue
-            
         if char == '"':
-            in_string = not in_string
+            in_str = not in_str
             continue
-            
-        if not in_string:
+        if not in_str:
             if char == '{':
                 brace_count += 1
             elif char == '}':
                 brace_count -= 1
                 if brace_count == 0:
-                    return text[start_idx:i+1]
+                    return text[start:idx+1]
                     
-    # Fallback if braces were not closed in a balanced way
-    end_idx = text.rfind("}")
-    if end_idx != -1 and end_idx > start_idx:
-        return text[start_idx:end_idx+1]
-        
+    # Fallback to last } if braces were not balanced correctly
+    end = text.rfind("}")
+    if end != -1 and end > start:
+        return text[start:end+1]
     return text.strip()
+
+
 
 def call_gemini(api_key, system_instruction, contents):
     model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
@@ -302,9 +303,8 @@ def run_qa_agent(spec_path, base_url, api_key):
     flow_name = os.path.splitext(os.path.basename(spec_path))[0]
     
     # Clean the URL for the report directory name (report_[flow]_[audited_url]_[date]_[time])
-    import re
-    from datetime import datetime
     url_clean = base_url.replace("http://", "").replace("https://", "")
+
     url_clean = re.sub(r'[^a-zA-Z0-9]', '_', url_clean)
     url_clean = re.sub(r'_+', '_', url_clean).strip('_')
     
@@ -324,7 +324,7 @@ def run_qa_agent(spec_path, base_url, api_key):
         if actions:
             first_action = actions[0]
             # Try to extract the URL or path if the action indicates visiting or navigating
-            match = re.search(r'(?:visitar|visit|navegar\s+a|navigate\s+to|go\s+to)\s+([^\s]+)', first_action, re.IGNORECASE)
+            match = re.search(r'(?:visit|navigate\s+to|go\s+to)\s+([^\s]+)', first_action, re.IGNORECASE)
             if match:
                 path_or_url = match.group(1).strip('`"\'')
                 if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
@@ -645,6 +645,7 @@ if __name__ == "__main__":
     load_dotenv()
     
     parser = argparse.ArgumentParser(description="Antigravity 2.0 QA Autonomous Sidecar Agent")
+    # Kept for backward compatibility with run.sh orchestrator
     parser.add_argument("--run", action="store_true", help="Run the QA agent loop")
     parser.add_argument("--spec", required=True, help="Path to the Markdown specification file")
     parser.add_argument("--base-url", default="http://localhost:3000", help="Base URL of the project to test")
