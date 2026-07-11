@@ -1,35 +1,35 @@
 #!/bin/bash
-# run.sh - Orquestador de agentes de QA
+# run.sh - QA Agent Orchestrator
 
-# Detener si hay errores en comandos críticos
+# Exit on critical command errors
 set -e
 
-# Inicializar variable vacía para la URL y el selector de flujo
+# Initialize empty variables for URL and flow selector
 BASE_URL=""
 FLOW_SELECT=""
 
-# Parsea argumentos
+# Parse arguments
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --url) BASE_URL="$2"; shift ;;
     --flow) FLOW_SELECT="$2"; shift ;;
-    *) echo "Opción desconocida: $1"; exit 1 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
   esac
   shift
 done
 
-# Validar URL
+# Validate URL
 if [ -z "$BASE_URL" ]; then
-  echo "Error: El parámetro --url es obligatorio."
-  echo "Uso: ./run.sh --url <URL_del_proyecto> [--flow <nombre_o_ruta_de_flujo>]"
-  echo "Ejemplo: ./run.sh --url http://localhost:3000 --flow ejemplo_flujo.md"
+  echo "Error: The --url parameter is mandatory."
+  echo "Usage: ./run.sh --url <project_URL> [--flow <flow_name_or_path>]"
+  echo "Example: ./run.sh --url http://localhost:3000 --flow example_flow.md"
   exit 1
 fi
 
-# Cargar variables desde archivo .env si existe
+# Load variables from .env file if it exists
 if [ -f .env ]; then
   while IFS= read -r line || [ -n "$line" ]; do
-    # Omitir comentarios y líneas vacías
+    # Skip comments and empty lines
     [[ "$line" =~ ^#.*$ ]] && continue
     [[ -z "$line" ]] && continue
     key=$(echo "$line" | cut -d '=' -f 1 | xargs)
@@ -38,25 +38,25 @@ if [ -f .env ]; then
   done < .env
 fi
 
-# Validar API key
+# Validate API key
 if [ -z "$GEMINI_API_KEY" ]; then
-  echo "Error: La variable de entorno GEMINI_API_KEY no está configurada."
-  echo "Por favor configúrala en el archivo .env o expórtala en la terminal."
+  echo "Error: The GEMINI_API_KEY environment variable is not configured."
+  echo "Please set it in your .env file or export it in the terminal."
   exit 1
 fi
 
-# Buscar flujos disponibles (.md)
+# Find available flows (.md)
 flows=()
 for f in ./flows/*.md; do
   [ -f "$f" ] && flows+=("$f")
 done
 
 if [ ${#flows[@]} -eq 0 ]; then
-  echo "Error: No se encontraron archivos de flujo (.md) en la carpeta ./flows"
+  echo "Error: No flow files (.md) found in the ./flows folder"
   exit 1
 fi
 
-# Determinar qué flujos ejecutar
+# Determine which flows to run
 flows_to_run=()
 if [ -n "$FLOW_SELECT" ]; then
   if [ -f "$FLOW_SELECT" ]; then
@@ -64,18 +64,18 @@ if [ -n "$FLOW_SELECT" ]; then
   elif [ -f "./flows/$FLOW_SELECT" ]; then
     flows_to_run+=("./flows/$FLOW_SELECT")
   else
-    echo "Error: El flujo especificado '$FLOW_SELECT' no existe."
+    echo "Error: The specified flow '$FLOW_SELECT' does not exist."
     exit 1
   fi
 else
   echo "=================================================="
-  echo "Selecciona el flujo de QA que deseas ejecutar:"
-  echo "0) [Ejecutar todos los flujos]"
+  echo "Select the QA flow you want to run:"
+  echo "0) [Run all flows]"
   for i in "${!flows[@]}"; do
     echo "$((i+1))) $(basename "${flows[$i]}")"
   done
   echo "=================================================="
-  read -p "Elige una opción (0-${#flows[@]}) [0]: " choice
+  read -p "Choose an option (0-${#flows[@]}) [0]: " choice
   choice=${choice:-0}
   
   if [ "$choice" -eq 0 ] 2>/dev/null; then
@@ -85,45 +85,45 @@ else
     if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#flows[@]}" ]; then
       flows_to_run+=("${flows[$idx]}")
     else
-      echo "Opción inválida."
+      echo "Invalid option."
       exit 1
     fi
   fi
 fi
 
 echo "=================================================="
-echo "Iniciando Suite de Pruebas Autónomas de QA"
-echo "URL Objetivo: $BASE_URL"
+echo "Starting Autonomous QA Test Suite"
+echo "Target URL: $BASE_URL"
 echo "=================================================="
 
-# Crear directorios necesarios
+# Create necessary directories
 mkdir -p ./reports
 mkdir -p ./flows
 
-# Bandera para rastrear fallas (no usar set -e para la iteración para que continúe)
+# Flag to track failures (disable set -e for iteration to allow continuing)
 set +e
 FAILED=0
 
-# Iterar sobre los flujos seleccionados
+# Iterate over selected flows
 for flow in "${flows_to_run[@]}"; do
   echo ""
   echo "--------------------------------------------------"
-  echo "Ejecutando flujo: $(basename "$flow")"
+  echo "Running flow: $(basename "$flow")"
   echo "--------------------------------------------------"
   
-  # Ejecuta el runner de Python
+  # Run the Python runner
   python3 ./antigravity_agent.py --run --spec "$flow" --base-url "$BASE_URL"
   RESULT=$?
   
-  # Definir colores para la salida
+  # Define colors for output
   RED='\033[0;31m'
   GREEN='\033[0;32m'
-  NC='\033[0m' # Sin color
+  NC='\033[0m' # No Color
 
   if [ $RESULT -eq 0 ]; then
-    echo -e ">> RESULTADO: ${GREEN}[ÉXITO] $(basename "$flow")${NC}"
+    echo -e ">> RESULT: ${GREEN}[SUCCESS] $(basename "$flow")${NC}"
   else
-    echo -e ">> RESULTADO: ${RED}[FALLO] $(basename "$flow")${NC} (Código de salida: $RESULT)"
+    echo -e ">> RESULT: ${RED}[FAILURE] $(basename "$flow")${NC} (Exit code: $RESULT)"
     FAILED=1
   fi
 done
@@ -131,10 +131,10 @@ done
 echo ""
 echo "=================================================="
 if [ "$FAILED" -eq 0 ]; then
-  echo -e "${GREEN}PROCESO COMPLETADO: Todos los flujos seleccionados se ejecutaron con ÉXITO.${NC}"
+  echo -e "${GREEN}PROCESS COMPLETED: All selected flows were executed successfully.${NC}"
   exit 0
 else
-  echo -e "${RED}PROCESO COMPLETADO con ERRORES. Algunos flujos fallaron.${NC}"
-  echo "Por favor revisa la carpeta ./reports para los detalles del diagnóstico y logs de error."
+  echo -e "${RED}PROCESS COMPLETED with ERRORS. Some flows failed.${NC}"
+  echo "Please check the ./reports folder for diagnostic details and error logs."
   exit 1
 fi

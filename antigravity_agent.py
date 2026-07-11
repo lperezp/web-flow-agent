@@ -35,12 +35,12 @@ class McpClient:
         os.makedirs("reports", exist_ok=True)
         self.stderr_log = open("reports/mcp_server_stderr.log", "w", encoding="utf-8")
         
-        # Valores por defecto para iniciar el servidor MCP
+        # Default values to start the MCP server
         cmd = "npx"
         args = ["-y", "chrome-devtools-mcp"]
         env = os.environ.copy()
         
-        # Intentar cargar configuración local desde .agents/mcp_config.json
+        # Try to load local configuration from .agents/mcp_config.json
         config_path = os.path.join(".agents", "mcp_config.json")
         if os.path.exists(config_path):
             try:
@@ -50,21 +50,21 @@ class McpClient:
                     if server_config:
                         cmd = server_config.get("command", cmd)
                         args = list(server_config.get("args", args))
-                        # Combinar variables de entorno
+                        # Merge environment variables
                         custom_env = server_config.get("env", {})
                         for k, v in custom_env.items():
                             env[str(k)] = str(v)
-                        print(f"Cargada configuración de MCP desde {config_path}", flush=True)
+                        print(f"Loaded MCP configuration from {config_path}", flush=True)
             except Exception as e:
-                print(f"Advertencia: No se pudo leer {config_path}: {e}", file=sys.stderr)
+                print(f"Warning: Could not read {config_path}: {e}", file=sys.stderr)
 
         user_data_path = os.path.abspath(".agents/chrome-profile")
-        # Asegurar que el perfil de Chrome esté configurado de forma aislada si no se especificó otro en los argumentos
+        # Ensure Chrome profile is configured in isolation if not specified in arguments
         has_user_data_dir = any(arg.startswith("--user-data-dir") for arg in args)
         if not has_user_data_dir:
             args.append(f"--user-data-dir={user_data_path}")
 
-        print(f"Iniciando servidor MCP: {cmd} {' '.join(args)}", flush=True)
+        print(f"Starting MCP server: {cmd} {' '.join(args)}", flush=True)
         self.process = subprocess.Popen(
             [cmd] + args,
             stdin=subprocess.PIPE,
@@ -104,20 +104,20 @@ class McpClient:
         while True:
             line = self.process.stdout.readline()
             if not line:
-                raise RuntimeError("El servidor MCP cerró la conexión inesperadamente.")
+                raise RuntimeError("MCP server closed connection unexpectedly.")
             line = line.strip()
             if not line:
                 continue
             try:
                 msg = json.loads(line)
             except json.JSONDecodeError:
-                # Omitir líneas que no sean JSON si las hay
+                # Skip non-JSON lines if any
                 continue
             
-            # Verificar si es la respuesta a nuestra petición
+            # Check if it is the response to our request
             if msg.get("id") == req_id:
                 if "error" in msg:
-                    raise RuntimeError(f"Error MCP: {msg['error']}")
+                    raise RuntimeError(f"MCP Error: {msg['error']}")
                 return msg.get("result")
 
     def initialize(self):
@@ -130,7 +130,7 @@ class McpClient:
             }
         })
         self.send_notification("notifications/initialized")
-        print("Servidor MCP inicializado correctamente.", flush=True)
+        print("MCP server initialized successfully.", flush=True)
         return res
 
     def call_tool(self, name, arguments):
@@ -153,13 +153,13 @@ class McpClient:
         pages_text = self.call_tool_text("list_pages", {})
         pages = parse_pages(pages_text)
         if not pages:
-            print("No se encontraron pestañas abiertas. Abriendo una nueva...", flush=True)
+            print("No open tabs found. Opening a new one...", flush=True)
             self.call_tool("new_page", {"url": "about:blank"})
-            time.sleep(1) # Esperar a que se abra
+            time.sleep(1) # Wait for page to open
         else:
             has_selected = any(p["selected"] for p in pages)
             if not has_selected:
-                print(f"Seleccionando la pestaña por defecto: ID {pages[0]['id']}", flush=True)
+                print(f"Selecting default tab: ID {pages[0]['id']}", flush=True)
                 self.call_tool("select_page", {"pageId": pages[0]["id"]})
 
     def close(self):
@@ -174,20 +174,26 @@ def parse_spec(spec_path):
     objective = ""
     actions = []
     if not os.path.exists(spec_path):
-        raise FileNotFoundError(f"No se encontró el archivo de especificación: {spec_path}")
+        raise FileNotFoundError(f"Specification file not found: {spec_path}")
         
     with open(spec_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
+            # Normalize prefixes for both Spanish and English
             if line.startswith("- **Objetivo:**") or line.startswith("- **Objetivo**"):
                 objective = line.replace("- **Objetivo:**", "").replace("- **Objetivo**", "").strip()
+            elif line.startswith("- **Objective:**") or line.startswith("- **Objective**"):
+                objective = line.replace("- **Objective:**", "").replace("- **Objective**", "").strip()
             elif line.startswith("- **Acción:**") or line.startswith("- **Acción**"):
                 action = line.replace("- **Acción:**", "").replace("- **Acción**", "").strip()
                 actions.append(action)
-            elif line.startswith("- ") and ("Objetivo:" in line or "Objetivo" in line):
+            elif line.startswith("- **Action:**") or line.startswith("- **Action**"):
+                action = line.replace("- **Action:**", "").replace("- **Action**", "").strip()
+                actions.append(action)
+            elif line.startswith("- ") and any(k in line for k in ["Objetivo:", "Objetivo", "Objective:", "Objective"]):
                 parts = line.split(":", 1)
                 objective = parts[1].strip()
-            elif line.startswith("- ") and ("Acción:" in line or "Acción" in line):
+            elif line.startswith("- ") and any(k in line for k in ["Acción:", "Acción", "Action:", "Action"]):
                 parts = line.split(":", 1)
                 actions.append(parts[1].strip())
     return objective, actions
@@ -226,7 +232,7 @@ def clean_json_text(text):
                 if brace_count == 0:
                     return text[start_idx:i+1]
                     
-    # Fallback si no se cerraron las llaves de forma balanceada
+    # Fallback if braces were not closed in a balanced way
     end_idx = text.rfind("}")
     if end_idx != -1 and end_idx > start_idx:
         return text[start_idx:end_idx+1]
@@ -262,40 +268,40 @@ def call_gemini(api_key, system_instruction, contents):
         err_msg = e.read().decode('utf-8')
         try:
             err_json = json.loads(err_msg)
-            message = err_json.get("error", {}).get("message", "Error de red desconocido")
+            message = err_json.get("error", {}).get("message", "Unknown network error")
         except Exception:
             message = err_msg
-        raise RuntimeError(f"Error en Gemini API ({e.code}): {message}") from e
+        raise RuntimeError(f"Gemini API Error ({e.code}): {message}") from e
     except Exception as e:
-        raise RuntimeError(f"Error al realizar petición a Gemini: {e}") from e
+        raise RuntimeError(f"Error querying Gemini: {e}") from e
 
     try:
         cleaned = clean_json_text(text)
         return json.loads(cleaned)
     except Exception as e:
-        print(f"Error parseando respuesta de Gemini. Texto crudo recibido:\n{text}", file=sys.stderr)
-        raise RuntimeError(f"Error al parsear respuesta JSON de Gemini: {e}. Texto crudo: {text[:200]}") from e
+        print(f"Error parsing Gemini response. Raw text received:\n{text}", file=sys.stderr)
+        raise RuntimeError(f"Error parsing Gemini JSON response: {e}. Raw text: {text[:200]}") from e
 
 def run_qa_agent(spec_path, base_url, api_key):
-    # Parsear especificación
+    # Parse specification
     objective, actions = parse_spec(spec_path)
     print("\n" + "="*50)
-    print(f"INICIANDO QA AGENT")
-    print(f"Especificación: {spec_path}")
-    print(f"Objetivo: {objective}")
-    print(f"URL Base: {base_url}")
+    print(f"STARTING QA AGENT")
+    print(f"Specification: {spec_path}")
+    print(f"Objective: {objective}")
+    print(f"Base URL: {base_url}")
     print("="*50 + "\n")
 
-    # Iniciar cliente MCP
+    # Start MCP client
     client = McpClient()
     history = []
     status = "running"
     final_message = ""
     
-    # Creamos un nombre limpio para los reportes
+    # Create a clean name for reports
     flow_name = os.path.splitext(os.path.basename(spec_path))[0]
     
-    # Limpiamos la URL para el nombre de archivo del reporte (report_[flow]_[url_auditada]_[date]_[time])
+    # Clean the URL for the report directory name (report_[flow]_[audited_url]_[date]_[time])
     import re
     from datetime import datetime
     url_clean = base_url.replace("http://", "").replace("https://", "")
@@ -313,12 +319,12 @@ def run_qa_agent(spec_path, base_url, api_key):
         client.initialize()
         client.ensure_page_selected()
 
-        # Navegar inicialmente a la URL base (salvo que el primer paso sea un Visitar/Navegar explícito a otra ruta)
+        # Initially navigate to base URL (unless the first step is an explicit Visit/Navigate to another path)
         initial_url = base_url
         if actions:
             first_action = actions[0]
-            # Intentamos extraer la URL o ruta si la acción indica visitar o navegar
-            match = re.search(r'(?:visitar|navegar\s+a)\s+([^\s]+)', first_action, re.IGNORECASE)
+            # Try to extract the URL or path if the action indicates visiting or navigating
+            match = re.search(r'(?:visitar|visit|navegar\s+a|navigate\s+to|go\s+to)\s+([^\s]+)', first_action, re.IGNORECASE)
             if match:
                 path_or_url = match.group(1).strip('`"\'')
                 if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
@@ -328,51 +334,51 @@ def run_qa_agent(spec_path, base_url, api_key):
                     path_clean = path_or_url.lstrip("/")
                     initial_url = f"{base_url_clean}/{path_clean}"
         
-        print(f"Navegando inicialmente a: {initial_url}", flush=True)
+        print(f"Initially navigating to: {initial_url}", flush=True)
         try:
             client.call_tool("navigate_page", {"url": initial_url, "type": "url"})
         except Exception as nav_err:
-            print(f"Advertencia: No se pudo navegar inicialmente a {initial_url}: {nav_err}", file=sys.stderr)
+            print(f"Warning: Could not navigate initially to {initial_url}: {nav_err}", file=sys.stderr)
 
-        # Configuración del prompt del sistema
-        system_instruction = f"""Eres un Agente Autónomo de QA (web-flow-agent). Tu misión es validar un flujo de prueba sobre una aplicación web interpretando un archivo de especificaciones en Markdown.
-Interactúas con la página llamando a herramientas del Model Context Protocol (MCP) de Chrome DevTools.
+        # System prompt configuration
+        system_instruction = f"""You are an Autonomous QA Agent (web-flow-agent). Your mission is to validate a test flow on a web application by interpreting a Markdown specification file.
+You interact with the page by calling tools from the Chrome DevTools Model Context Protocol (MCP) server.
 
-En cada turno se te proporcionará:
-- El Objetivo del flujo de prueba.
-- Los Pasos/Acciones a validar.
-- La URL actual y título de la página.
-- El snapshot del árbol de accesibilidad (A11y tree) del DOM de la página actual con los UIDs de los elementos.
-- Los logs recientes de la consola de JS y peticiones de red.
-- El historial de acciones que ya has realizado en esta ejecución.
-- La URL Base del proyecto (e.g., {base_url}). Si una acción dice "Visitar /productos", debes navegar a la URL base + ruta relativa (ej. {base_url}/productos).
+At each turn, you will be provided with:
+- The Objective of the test flow.
+- The Steps/Actions to validate.
+- The current URL and page title.
+- The accessibility snapshot (A11y tree) of the current page's DOM with element UIDs.
+- Recent JS console logs and network requests.
+- The history of actions you have already performed in this execution.
+- The Base URL of the project (e.g., {base_url}). If an action says "Visit /products" or "Go to /products", you must navigate to the base URL + relative path (e.g., {base_url}/products).
 
-Debes analizar el estado de la página y decidir cuál es la mejor acción a realizar. Tu respuesta DEBE ser un JSON válido que cumpla estrictamente con esta estructura:
+You must analyze the state of the page and decide the best action to take. Your response MUST be a valid JSON object that strictly complies with this structure:
 {{
-  "thought": "Explicación detallada en español sobre qué observas en la página, qué paso del flujo estás validando y qué decides hacer a continuación.",
+  "thought": "Detailed explanation in English of what you observe on the page, which step of the flow you are validating, and what you decide to do next.",
   "action": "call_tool" | "success" | "fail",
   "tool_name": "navigate_page" | "click" | "fill" | "wait_for" | "evaluate_script" | "take_screenshot",
   "tool_arguments": {{
-    // Argumentos específicos de la herramienta a llamar
+    // Specific arguments for the tool to call
   }},
-  "message": "Mensaje en español detallando la razón del éxito o del fallo (solo si action es 'success' o 'fail')."
+  "message": "Message in English detailing the reason for success or failure (only if action is 'success' or 'fail')."
 }}
 
-Reglas críticas de interacción:
-1. Para navegar: Usa la herramienta 'navigate_page' con los argumentos {{"url": "<url_completa>", "type": "url"}}.
-2. Para hacer clic: Usa la herramienta 'click' con {{"uid": "<uid_del_elemento_del_último_snapshot>"}}.
-3. Para escribir: Usa la herramienta 'fill' con {{"uid": "<uid_del_elemento>", "value": "<texto_a_escribir>"}}.
-4. Para esperar: Usa la herramienta 'wait_for' con {{"timeout": 2000}}.
-5. Si ves un error grave de consola o una petición de red con código >= 400/500 que impida completar el flujo, o si el flujo no se comporta como se especifica (ej. el total de la compra no se actualiza o no aparece el mensaje de checkout), debes seleccionar "action": "fail" y explicar el problema en "message".
-6. Si has completado con éxito todos los pasos indicados en la especificación Markdown, selecciona "action": "success" y detalla la confirmación en "message".
-7. Solo usa UIDs que existan en el snapshot más reciente que se te ha proporcionado.
+Critical interaction rules:
+1. To navigate: Use the 'navigate_page' tool with arguments {{"url": "<full_url>", "type": "url"}}.
+2. To click: Use the 'click' tool with {{"uid": "<element_uid_from_the_latest_snapshot>"}}.
+3. To type/fill: Use the 'fill' tool with {{"uid": "<element_uid>", "value": "<text_to_type>"}}.
+4. To wait: Use the 'wait_for' tool with {{"timeout": 2000}}.
+5. If you see a severe console error or a network request with status >= 400/500 that prevents completing the flow, or if the flow does not behave as specified (e.g., the purchase total does not update or the checkout message does not appear), you must select "action": "fail" and explain the issue in "message".
+6. If you have successfully completed all steps listed in the Markdown specification, select "action": "success" and detail the confirmation in "message".
+7. Only use UIDs that exist in the most recent snapshot provided to you.
 """
 
         max_turns = 25
         for turn in range(1, max_turns + 1):
-            print(f"--- Turno {turn}/{max_turns} ---", flush=True)
+            print(f"--- Turn {turn}/{max_turns} ---", flush=True)
 
-            # Obtener estado de la página
+            # Get page state
             pages_text = client.call_tool_text("list_pages", {})
             pages = parse_pages(pages_text)
             current_url = "unknown"
@@ -381,21 +387,21 @@ Reglas críticas de interacción:
                     current_url = p["url"]
                     break
 
-            # Tomar snapshot del DOM
+            # Take DOM snapshot
             dom_snapshot = client.call_tool_text("take_snapshot", {})
 
-            # Obtener diagnósticos (consola y red)
+            # Get diagnostics (console and network)
             try:
                 console_logs = client.call_tool_text("list_console_messages", {"pageSize": 20})
             except Exception:
-                console_logs = "No disponible"
+                console_logs = "Not available"
 
             try:
                 network_requests = client.call_tool_text("list_network_requests", {"pageSize": 20})
             except Exception:
-                network_requests = "No disponible"
+                network_requests = "Not available"
 
-            # Compilar prompt de contenido
+            # Compile content prompt
             user_content = {
                 "objective": objective,
                 "actions": actions,
@@ -410,52 +416,52 @@ Reglas críticas de interacción:
                 {"role": "user", "parts": [{"text": json.dumps(user_content, indent=2)}]}
             ]
 
-            print("Consultando a Gemini...", flush=True)
+            print("Querying Gemini...", flush=True)
             response = call_gemini(api_key, system_instruction, contents)
 
             thought = response.get("thought", "")
             action = response.get("action", "")
             
-            print(f"Pensamiento del Agente: {thought}", flush=True)
+            print(f"Agent Thought: {thought}", flush=True)
             
             if action == "call_tool":
                 tool_name = response.get("tool_name")
                 tool_args = response.get("tool_arguments", {})
                 
-                print(f"Ejecutando herramienta: {tool_name} con argumentos: {tool_args}", flush=True)
+                print(f"Executing tool: {tool_name} with arguments: {tool_args}", flush=True)
                 
                 try:
                     tool_result = client.call_tool_text(tool_name, tool_args)
-                    print(f"Resultado herramienta: {tool_result[:200]}...", flush=True)
+                    print(f"Tool result: {tool_result[:200]}...", flush=True)
                     
-                    # Espera corta para que la página reaccione/renderice antes de la captura
+                    # Short wait for the page to react/render before capturing the screenshot
                     time.sleep(1.5)
                     
                     history_entry = {
                         "turn": turn,
                         "thought": thought,
-                        "action": f"Llamada a {tool_name}",
+                        "action": f"Call to {tool_name}",
                         "arguments": tool_args,
-                        "result": tool_result[:500] # Limitar tamaño guardado
+                        "result": tool_result[:500] # Limit saved size
                     }
                     
-                    # Captura de pantalla de este paso
+                    # Screenshot of this step
                     step_ss_name = f"step_{turn}_{tool_name}.png"
                     step_ss_path = os.path.join(report_dir, step_ss_name)
                     try:
                         client.call_tool("take_screenshot", {"filePath": step_ss_path})
                         history_entry["screenshot"] = step_ss_name
-                        print(f"Captura de pantalla del paso {turn} guardada en: {step_ss_name}", flush=True)
+                        print(f"Step {turn} screenshot saved to: {step_ss_name}", flush=True)
                     except Exception as ss_err:
-                        print(f"Advertencia: No se pudo tomar captura del paso {turn}: {ss_err}", file=sys.stderr)
+                        print(f"Warning: Could not take screenshot of step {turn}: {ss_err}", file=sys.stderr)
                         
                     history.append(history_entry)
                 except Exception as tool_err:
-                    print(f"Error al ejecutar herramienta: {tool_err}", file=sys.stderr)
+                    print(f"Error executing tool: {tool_err}", file=sys.stderr)
                     history.append({
                         "turn": turn,
                         "thought": thought,
-                        "action": f"Llamada a {tool_name}",
+                        "action": f"Call to {tool_name}",
                         "arguments": tool_args,
                         "error": str(tool_err)
                     })
@@ -463,29 +469,29 @@ Reglas críticas de interacción:
 
             elif action == "success":
                 status = "success"
-                final_message = response.get("message", "El flujo finalizó correctamente.")
-                print(f"\n¡ÉXITO!: {final_message}", flush=True)
+                final_message = response.get("message", "The flow completed successfully.")
+                print(f"\nSUCCESS: {final_message}", flush=True)
                 break
 
             elif action == "fail":
                 status = "fail"
-                final_message = response.get("message", "El agente reportó un fallo.")
+                final_message = response.get("message", "The agent reported a failure.")
                 RED = "\033[91m"
                 RESET = "\033[0m"
-                print(f"\n{RED}¡FALLO DETECTADO!: {final_message}{RESET}", flush=True)
+                print(f"\n{RED}FAILURE DETECTED: {final_message}{RESET}", flush=True)
                 break
             else:
-                print(f"Acción desconocida devuelta por Gemini: {action}", file=sys.stderr)
+                print(f"Unknown action returned by Gemini: {action}", file=sys.stderr)
                 status = "error"
-                final_message = f"Acción desconocida: {action}"
+                final_message = f"Unknown action: {action}"
                 break
 
         if status == "running":
             status = "fail"
-            final_message = f"El agente agotó el límite de {max_turns} turnos sin resolver el objetivo."
+            final_message = f"The agent reached the limit of {max_turns} turns without achieving the objective."
             RED = "\033[91m"
             RESET = "\033[0m"
-            print(f"\n{RED}¡FALLO!: {final_message}{RESET}", flush=True)
+            print(f"\n{RED}FAILURE: {final_message}{RESET}", flush=True)
 
     except Exception as e:
         status = "error"
@@ -494,19 +500,19 @@ Reglas críticas de interacción:
         RESET = "\033[0m"
         print(f"\n{RED}ERROR: {final_message}{RESET}", file=sys.stderr)
         
-        # Guardar log de error detallado
+        # Save detailed error log
         error_log_path = os.path.join(report_dir, "error.log")
         try:
             with open(error_log_path, "w", encoding="utf-8") as f_err:
                 f_err.write(f"Error: {final_message}\n\n")
                 traceback.print_exc(file=f_err)
-            print(f"Log de error guardado en: {error_log_path}", flush=True)
+            print(f"Error log saved to: {error_log_path}", flush=True)
             report_data["error_log_file"] = error_log_path
         except Exception as log_err:
-            print(f"No se pudo guardar el archivo de log de error: {log_err}", file=sys.stderr)
+            print(f"Could not save error log file: {log_err}", file=sys.stderr)
 
-    # --- Fase de Diagnóstico Post-Mortem y Reportes ---
-    print("\nGenerando reportes...", flush=True)
+    # --- Post-Mortem Diagnostics and Reports Phase ---
+    print("\nGenerating reports...", flush=True)
     report_data.update({
         "spec": spec_path,
         "objective": objective,
@@ -516,7 +522,7 @@ Reglas críticas de interacción:
     })
 
     try:
-        # Intentamos obtener diagnóstico técnico final
+        # Try to get final technical diagnostics
         console_logs = client.call_tool_text("list_console_messages", {"pageSize": 50})
         network_requests = client.call_tool_text("list_network_requests", {"pageSize": 50})
         dom_snapshot = client.call_tool_text("take_snapshot", {})
@@ -526,47 +532,47 @@ Reglas críticas de interacción:
             "network_requests": network_requests
         }
 
-        # Guardar snapshot de accesibilidad en archivo
+        # Save accessibility snapshot to file
         snapshot_path = os.path.join(report_dir, "snapshot.txt")
         with open(snapshot_path, "w", encoding="utf-8") as f:
             f.write(dom_snapshot)
         report_data["snapshot_file"] = snapshot_path
 
-        # Guardar captura de pantalla en archivo
+        # Save screenshot to file
         screenshot_path = os.path.join(report_dir, "screenshot.png")
         client.call_tool("take_screenshot", {"filePath": screenshot_path})
         report_data["screenshot_file"] = screenshot_path
-        print(f"Captura de pantalla guardada en: {screenshot_path}", flush=True)
+        print(f"Screenshot saved to: {screenshot_path}", flush=True)
 
     except Exception as diag_err:
-        print(f"No se pudieron recopilar todos los diagnósticos finales: {diag_err}", file=sys.stderr)
+        print(f"Could not collect all final diagnostics: {diag_err}", file=sys.stderr)
 
-    # Escribir reporte JSON final
+    # Write final JSON report
     report_json_path = os.path.join(report_dir, "report.json")
     with open(report_json_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, indent=2, ensure_ascii=False)
-    print(f"Reporte JSON guardado en: {report_json_path}", flush=True)
+    print(f"JSON report saved to: {report_json_path}", flush=True)
 
-    # Generar reporte Markdown detallado (report.md)
+    # Generate detailed Markdown report (report.md)
     report_md_path = os.path.join(report_dir, "report.md")
     try:
         status_color = "🟢" if status == "success" else "🔴"
-        status_label = "ÉXITO" if status == "success" else "FALLO / ERROR"
+        status_label = "SUCCESS" if status == "success" else "FAILURE / ERROR"
         
         md_content = []
-        md_content.append(f"# Reporte de Ejecución de QA: {flow_name}\n")
-        md_content.append(f"- **Estado:** {status_color} **{status_label}**")
-        md_content.append(f"- **Fecha:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        md_content.append(f"- **URL Base:** [{base_url}]({base_url})")
-        md_content.append(f"- **Especificación:** `{spec_path}`\n")
+        md_content.append(f"# QA Execution Report: {flow_name}\n")
+        md_content.append(f"- **Status:** {status_color} **{status_label}**")
+        md_content.append(f"- **Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        md_content.append(f"- **Base URL:** [{base_url}]({base_url})")
+        md_content.append(f"- **Specification:** `{spec_path}`\n")
         
-        md_content.append("## Objetivo")
+        md_content.append("## Objective")
         md_content.append(f"{objective}\n")
         
-        md_content.append("## Mensaje de Finalización")
+        md_content.append("## Completion Message")
         md_content.append(f"> {final_message}\n")
         
-        md_content.append("## Historial de Turnos\n")
+        md_content.append("## Turn History\n")
         for turn_data in history:
             turn_num = turn_data.get("turn")
             thought = turn_data.get("thought", "").strip()
@@ -574,41 +580,41 @@ Reglas críticas de interacción:
             args = turn_data.get("arguments", {})
             result = turn_data.get("result", "").strip()
             
-            md_content.append(f"### Turno {turn_num}")
-            md_content.append(f"**Pensamiento:** {thought}\n")
-            md_content.append(f"**Acción:** `{action}` con argumentos `{args}`\n")
+            md_content.append(f"### Turn {turn_num}")
+            md_content.append(f"**Thought:** {thought}\n")
+            md_content.append(f"**Action:** `{action}` with arguments `{args}`\n")
             
-            # Recortar el resultado si es muy largo (como snapshots) para mantener el MD legible
+            # Truncate result if it is too long (like snapshots) to keep MD readable
             if len(result) > 500:
-                result_disp = result[:500] + "\n... (resultado truncado para legibilidad, ver archivo de snapshot completo)"
+                result_disp = result[:500] + "\n... (result truncated for readability, see full snapshot file)"
             else:
                 result_disp = result
             
-            md_content.append(f"**Resultado:**\n```\n{result_disp}\n```\n")
+            md_content.append(f"**Result:**\n```\n{result_disp}\n```\n")
             
-            # Si hay captura de pantalla para este paso, incluirla
+            # If screenshot is available for this step, include it
             if "screenshot" in turn_data:
-                md_content.append(f"📸 **Captura de pantalla del paso:**\n![Paso {turn_num}](./{turn_data['screenshot']})\n")
+                md_content.append(f"📸 **Step Screenshot:**\n![Step {turn_num}](./{turn_data['screenshot']})\n")
                 
             md_content.append("---")
             
-        md_content.append("\n## Diagnósticos y Archivos Adjuntos")
-        md_content.append("- 📊 [Reporte JSON Completo](./report.json)")
-        md_content.append("- 📸 [Captura de Pantalla Final](./screenshot.png)")
-        md_content.append("- 📄 [Snapshot Estructural del DOM (A11y)](./snapshot.txt)")
+        md_content.append("\n## Diagnostics and Attachments")
+        md_content.append("- 📊 [Complete JSON Report](./report.json)")
+        md_content.append("- 📸 [Final Screenshot](./screenshot.png)")
+        md_content.append("- 📄 [DOM Structural Snapshot (A11y)](./snapshot.txt)")
         if "error_log_file" in report_data:
-            md_content.append("- 🛑 [Log de Error de la Pila (error.log)](./error.log)")
+            md_content.append("- 🛑 [Stack Error Log (error.log)](./error.log)")
             
         with open(report_md_path, "w", encoding="utf-8") as f_md:
             f_md.write("\n".join(md_content))
-        print(f"Reporte Markdown detallado guardado en: {report_md_path}", flush=True)
+        print(f"Detailed Markdown report saved to: {report_md_path}", flush=True)
     except Exception as md_err:
-        print(f"No se pudo escribir el reporte Markdown: {md_err}", file=sys.stderr)
+        print(f"Could not write Markdown report: {md_err}", file=sys.stderr)
 
-    # Limpieza
+    # Cleanup
     client.close()
 
-    # Salida con código correspondiente
+    # Exit with corresponding code
     if status == "success":
         sys.exit(0)
     else:
@@ -633,22 +639,22 @@ def load_dotenv(dotenv_path=".env"):
                         if key not in os.environ:
                             os.environ[key] = val
         except Exception as e:
-            print(f"Advertencia: No se pudo leer {dotenv_path}: {e}", file=sys.stderr)
+            print(f"Warning: Could not read {dotenv_path}: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     load_dotenv()
     
     parser = argparse.ArgumentParser(description="Antigravity 2.0 QA Autonomous Sidecar Agent")
-    parser.add_argument("--run", action="store_true", help="Ejecutar el bucle de agente de QA")
-    parser.add_argument("--spec", required=True, help="Ruta al archivo de especificación Markdown")
-    parser.add_argument("--base-url", default="http://localhost:3000", help="URL base del proyecto a probar")
+    parser.add_argument("--run", action="store_true", help="Run the QA agent loop")
+    parser.add_argument("--spec", required=True, help="Path to the Markdown specification file")
+    parser.add_argument("--base-url", default="http://localhost:3000", help="Base URL of the project to test")
     
     args = parser.parse_args()
     
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: La variable de entorno GEMINI_API_KEY no está configurada.", file=sys.stderr)
-        print("Por favor, configúrala en el archivo .env o expórtala antes de ejecutar.", file=sys.stderr)
+        print("Error: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
+        print("Please set it in your .env file or export it before running.", file=sys.stderr)
         sys.exit(1)
         
     run_qa_agent(args.spec, args.base_url, api_key)
