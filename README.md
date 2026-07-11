@@ -1,6 +1,4 @@
-# Antigravity 2.0 – QA Autonomous Sidecar (PoC)
-
-Este repositorio contiene un Proof of Concept (PoC) de **Antigravity 2.0**, transformando al agente en una plataforma de **Headless Background Labor**. 
+# web-flow-agent
 
 En lugar de requerir que el desarrollador interactúe en tiempo real ("on-demand"), este sistema permite programar y automatizar flujos de QA autónomos escritos en archivos de Markdown legibles, interactuando con la interfaz mediante el protocolo **MCP (Model Context Protocol) de Chrome DevTools** y analizando semánticamente cada paso utilizando la API de Gemini.
 
@@ -23,7 +21,7 @@ graph TD
 Estructura de archivos del proyecto:
 
 ```
-/Users/LuisPerez/Documents/ghost-agent
+/Users/LuisPerez/Documents/web-flow-agent
 ├── .agents/
 │   ├── mcp_config.json       # Configuración local del servidor MCP
 │   └── chrome-profile/       # Perfil aislado de Chrome para evitar bloqueos
@@ -62,7 +60,7 @@ El agente (`antigravity_agent.py`) lee el archivo Markdown del flujo (ej. `flows
 ### Paso 3: Inicialización del Browser e Integración MCP
 El agente inicia el servidor `chrome-devtools-mcp` mediante un subproceso ejecutando `npx -y chrome-devtools-mcp` aislado en la carpeta `.agents/chrome-profile` para evitar bloqueos con otras sesiones. Se conecta mediante el protocolo MCP (JSON-RPC sobre Stdio) y asegura que exista al menos una pestaña de navegación activa.
 
-### Paso 4: Bucle de Navegación Autónoma (Hasta 15 turnos)
+### Paso 4: Bucle de Navegación Autónoma
 En cada turno del bucle:
 1. **Extracción de Estado**: Se captura la URL actual de la página y se genera un snapshot de accesibilidad (A11y tree) del DOM usando la herramienta `take_snapshot` del MCP. Esto proporciona un árbol estructurado de elementos con UIDs únicos (ej. `[12] button "Añadir al carrito"`).
 2. **Obtención de Logs**: Se extraen los últimos mensajes de consola y peticiones de red.
@@ -120,9 +118,9 @@ Al ejecutar el comando, se desplegará un menú interactivo en la terminal lista
 ==================================================
 Selecciona el flujo de QA que deseas ejecutar:
 0) [Ejecutar todos los flujos]
-1) ejemplo_flujo.md
-2) tag_cuero_visualizacion.md
-3) tag_cuero_no_conflicto.md
+1) ejemplo_flujo_1.md
+2) ejemplo_flujo_2.md
+3) ejemplo_flujo_3.md
 ==================================================
 Elige una opción (0-3) [0]: 
 ```
@@ -130,14 +128,12 @@ Elige una opción (0-3) [0]:
 #### Selección Directa (No interactiva)
 Si deseas ejecutar un flujo específico de forma directa (por ejemplo, para automatizar o integrarlo en CI/CD), puedes pasar el parámetro opcional `--flow`:
 ```bash
-./run.sh --url https://www.oechsle.pe --flow tag_cuero_visualizacion.md
+./run.sh --url https://www.lperezp.dev --flow ejemplo_flujo_1.md
 ```
 
 ---
 
 ## 5. Salidas y Reportes de QA
-
-Para mantener el historial ordenado y evitar sobreescribir ejecuciones anteriores, cada corrida genera una carpeta única dentro de `./reports` con el formato `reports/report_[flujo]_[url_auditada]_[date]_[time]/`:
 
 Dentro de esa carpeta encontrarás:
 - `report.md`: Reporte legible y detallado en formato Markdown que resume toda la ejecución paso a paso (pensamientos, acciones, resultados y capturas de pantalla de cada turno de forma integrada).

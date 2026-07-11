@@ -335,7 +335,7 @@ def run_qa_agent(spec_path, base_url, api_key):
             print(f"Advertencia: No se pudo navegar inicialmente a {initial_url}: {nav_err}", file=sys.stderr)
 
         # Configuración del prompt del sistema
-        system_instruction = f"""Eres un Agente Autónomo de QA (Antigravity 2.0). Tu misión es validar un flujo de prueba sobre una aplicación web interpretando un archivo de especificaciones en Markdown.
+        system_instruction = f"""Eres un Agente Autónomo de QA (web-flow-agent). Tu misión es validar un flujo de prueba sobre una aplicación web interpretando un archivo de especificaciones en Markdown.
 Interactúas con la página llamando a herramientas del Model Context Protocol (MCP) de Chrome DevTools.
 
 En cada turno se te proporcionará:
